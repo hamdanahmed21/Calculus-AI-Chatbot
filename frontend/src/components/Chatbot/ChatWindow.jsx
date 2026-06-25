@@ -14,6 +14,7 @@ const WELCOME_PROMPTS = [
 ];
 
 const DEMO_BOT_REPLY =
+  "[STEP 1 of 2]\n\n" +
   "Great question! The partial derivative $\\frac{\\partial f}{\\partial x}$ measures how $f$ changes when only $x$ changes.\n\n" +
   "Step 1: Treat other variables as constants.\n" +
   "Step 2: Differentiate with respect to $x$.\n\n" +
