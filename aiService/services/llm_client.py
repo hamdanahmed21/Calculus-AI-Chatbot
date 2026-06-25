@@ -272,6 +272,108 @@ async def ask_openai(
     return response.choices[0].message.content
 
 
+
+async def ask_mock_stream(
+    message: str,
+    topic: str = "",
+    history: list = None
+):
+    """
+    Streaming version of the mock response, for testing without
+    burning OpenAI/Grok API credits. Yields word-by-word.
+    """
+    import asyncio
+
+    if history is None:
+        history = []
+
+    full_text = (
+        f"Mock streamed response. Topic: {topic or 'general'}. "
+        f"You asked: {message}. "
+        f"History length: {len(history)} messages. "
+        f"This is a placeholder streamed response simulating real token output."
+    )
+
+    for word in full_text.split(" "):
+        yield word + " "
+        await asyncio.sleep(0.03)
+
+
+async def ask_openai_stream(
+    message: str,
+    topic: str = "",
+    history: list = None
+):
+    """
+    Streaming version of ask_openai.
+    Yields text chunks (tokens) as they arrive from the model,
+    instead of waiting for the full completion.
+    """
+    if history is None:
+        history = []
+
+    messages = []
+    # ── System prompt — Cal's brain ─────────────────────────
+    system_content = CAL_SYSTEM_PROMPT
+    if topic:
+        system_content += f"\n\n[PAGE CONTEXT: {topic}]"
+    messages.append({
+        "role": "system",
+        "content": system_content
+    })
+
+    # ── Conversation history (last 10 turns max) ─────────────
+    history = history[-10:] if len(history) > 10 else history
+    for item in history:
+        messages.append(
+            {
+                "role": item["role"],
+                "content": item["content"]
+            }
+        )
+
+    # Current user message
+    messages.append(
+        {
+            "role": "user",
+            "content": message
+        }
+    )
+
+    stream = await client.chat.completions.create(
+        model="gpt-4.1-mini",
+        messages=messages,
+        temperature=0.3,
+        max_tokens=1000,
+        stream=True,
+    )
+
+    async for chunk in stream:
+        if not chunk.choices:
+            continue
+        delta = chunk.choices[0].delta.content
+        if delta:
+            yield delta
+
+
+async def ask_llm_stream(
+    message: str,
+    topic: str = "",
+    history: list = None
+):
+    """
+    Streaming counterpart to ask_llm.
+    Switches between mock and real streaming based on USE_MOCK,
+    same pattern as the existing non-streaming ask_llm().
+    """
+    if USE_MOCK:
+        async for chunk in ask_mock_stream(message, topic, history):
+            yield chunk
+    else:
+        async for chunk in ask_openai_stream(message, topic, history):
+            yield chunk
+
+
 async def ask_llm(
     message: str,
     topic: str = "",
