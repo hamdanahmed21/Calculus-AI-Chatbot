@@ -1,9 +1,13 @@
 import os
+import logging
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 
 # Load .env file
-load_dotenv("aiService/.env")
+load_dotenv("aiService/services/.env")
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 
 # Toggle between mock and OpenAI
 USE_MOCK = True
@@ -263,13 +267,28 @@ async def ask_openai(
     )
 
     response = await client.chat.completions.create(
-        model="gpt-4.1-mini",
+        model="grok-3-mini",
         messages=messages,
         temperature=0.3,
         max_tokens=1000
     )
 
-    return response.choices[0].message.content
+    response_content = response.choices[0].message.content
+    
+    # CB-8: Scope violation detection
+    calculus_keywords = [
+        "derivative", "integral", "gradient", "limit", "vector",
+        "lagrange", "taylor", "partial", "curl", "divergence",
+        "multivariable", "calculus", "differentiate", "integrate"
+    ]
+    
+    has_calculus_keyword = any(kw in message.lower() for kw in calculus_keywords)
+    has_cal_refusal = "I'm Cal" in response_content
+    
+    if not has_cal_refusal and not has_calculus_keyword:
+        logging.warning(f"SCOPE_VIOLATION: possible off-topic response for message: {message[:80]}")
+    
+    return response_content
 
 
 
@@ -341,7 +360,7 @@ async def ask_openai_stream(
     )
 
     stream = await client.chat.completions.create(
-        model="gpt-4.1-mini",
+        model="grok-3-mini",
         messages=messages,
         temperature=0.3,
         max_tokens=1000,
