@@ -1,9 +1,11 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 import logging
 import re
+import json
 
-from aiService.services.llm_client import ask_llm
+from aiService.services.llm_client import ask_llm, ask_llm_stream
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -28,36 +30,29 @@ class ChatResponse(BaseModel):
 def parse_follow_ups(raw_response: str) -> tuple[str, list[str]]:
     """
     Extract [FOLLOW_UPS]...[/FOLLOW_UPS] block from LLM response.
-    
+
     Returns:
         (clean_answer, suggestions_list)
     """
-    # Pattern to match [FOLLOW_UPS]...[/FOLLOW_UPS] block
     pattern = r'\[FOLLOW_UPS\](.*?)\[/FOLLOW_UPS\]'
     match = re.search(pattern, raw_response, re.DOTALL | re.IGNORECASE)
-    
+
     if not match:
-        # No follow-ups found, return original response with empty list
         return raw_response.strip(), []
-    
-    # Extract the follow-ups text
+
     follow_ups_text = match.group(1).strip()
-    
-    # Remove the [FOLLOW_UPS] block from the main answer
     clean_answer = re.sub(pattern, '', raw_response, flags=re.DOTALL | re.IGNORECASE).strip()
-    
-    # Parse numbered list (e.g., "1. Question here\n2. Another question")
+
     suggestions = []
     for line in follow_ups_text.split('\n'):
         line = line.strip()
         if not line:
             continue
-        # Match patterns like "1. ", "2)", "3 -", etc.
         cleaned = re.sub(r'^\d+[\.\)]\s*', '', line)
-        cleaned = re.sub(r'^-\s*', '', cleaned)  # Also handle "- Question"
+        cleaned = re.sub(r'^-\s*', '', cleaned)
         if cleaned:
             suggestions.append(cleaned)
-    
+
     return clean_answer, suggestions
 
 
@@ -78,7 +73,6 @@ async def health():
 async def chat(request: ChatRequest):
 
     try:
-
         logging.info(
             f"Received question: {request.message}"
         )
@@ -89,7 +83,6 @@ async def chat(request: ChatRequest):
             history=request.history
         )
 
-        # Parse out the [FOLLOW_UPS] block
         clean_answer, suggestions = parse_follow_ups(raw_response)
 
         logging.info(
@@ -102,12 +95,75 @@ async def chat(request: ChatRequest):
         )
 
     except Exception as e:
-
         logging.error(
             f"Chat error: {str(e)}"
         )
-
         raise HTTPException(
             status_code=500,
             detail="AI service unavailable"
         )
+
+
+class ChatStreamRequest(BaseModel):
+    message: str
+    topic: str = ""
+    history: list = Field(default_factory=list)
+
+
+@app.post("/chat/stream")
+async def chat_stream(request: ChatStreamRequest):
+    """
+    Streaming chat endpoint. Sends Server-Sent Events (SSE) as the
+    model generates tokens, instead of waiting for the full response.
+
+    Event format:
+        data: <json with a "token" field>\n\n
+    Final event:
+        data: [DONE]\n\n
+    On error:
+        data: <json with an "error" field>\n\n   followed by [DONE]
+    """
+
+    async def event_generator():
+        full_response = ""
+        try:
+            logging.info(
+                f"Received streaming question: {request.message}"
+            )
+
+            async for token in ask_llm_stream(
+                message=request.message,
+                topic=request.topic,
+                history=request.history
+            ):
+                full_response += token
+                payload = json.dumps({"token": token})
+                yield f"data: {payload}\n\n"
+
+            # Once streaming is done, parse follow-ups from the
+            # full concatenated text and send them as a final event
+            clean_answer, suggestions = parse_follow_ups(full_response)
+            final_payload = json.dumps({
+                "done": True,
+                "suggestions": suggestions
+            })
+            yield f"data: {final_payload}\n\n"
+
+        except Exception as e:
+            logging.error(
+                f"Streaming chat error: {str(e)}"
+            )
+            error_payload = json.dumps({"error": "AI service unavailable"})
+            yield f"data: {error_payload}\n\n"
+
+        finally:
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # disables proxy buffering (e.g. nginx)
+        }
+    )

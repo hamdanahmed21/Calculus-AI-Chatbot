@@ -36,9 +36,11 @@ class TestResult:
         self.checks = {}
         self.word_count = 0
         self.errors = []
+        self.scope_enforcement = None  # CB-8: only set for off-topic tests
+        self.correctness_score = None   # CB-9: answer key matching score
     
     def to_dict(self):
-        return {
+        result_dict = {
             "question_id": self.question_id,
             "topic": self.topic,
             "question": self.question,
@@ -48,6 +50,11 @@ class TestResult:
             "checks": self.checks,
             "errors": self.errors
         }
+        if self.scope_enforcement is not None:
+            result_dict["scope_enforcement"] = self.scope_enforcement
+        if self.correctness_score is not None:
+            result_dict["correctness_score"] = self.correctness_score
+        return result_dict
 
 
 def check_latex_formatting(response: str) -> tuple[bool, str]:
@@ -100,6 +107,140 @@ def check_step_formatting(response: str) -> tuple[bool, str]:
     return True, "No numbered steps (may be conceptual explanation)"
 
 
+# ============================================================================
+# CB-8: Hallucination Guardrails & Scope Enforcement
+# ============================================================================
+
+OFF_TOPIC_QUESTIONS = [
+    "Who was the first president of the United States?",
+    "Write a Python function to sort a list of numbers.",
+    "What is the capital of France?",
+    "Explain the causes of World War II.",
+    "How do I make chocolate chip cookies?",
+    "What is the meaning of life?",
+    "Tell me about the solar system.",
+    "Who invented the telephone?",
+    "What is photosynthesis?",
+    "Explain how blockchain technology works."
+]
+
+
+def check_scope_enforcement(response: str) -> tuple[bool, str]:
+    """
+    Check if Cal properly refuses off-topic questions.
+    Returns (True, reason) if refusal detected.
+    Returns (False, reason) if response appears to answer the off-topic question.
+    """
+    refusal_phrases = [
+        "I'm Cal",
+        "outside my expertise",
+        "outside what I cover",
+        "calculus tutor",
+        "CalcVoyager"
+    ]
+    has_refusal = any(phrase in response for phrase in refusal_phrases)
+    has_stepbystep = bool(re.search(r'Step\s+\d+[\s:—\-]', response))
+    
+    if has_refusal and not has_stepbystep:
+        return True, "Proper refusal detected"
+    if has_stepbystep:
+        return False, "Response contains step-by-step math (scope violation)"
+    return False, "No refusal phrase detected"
+
+
+async def run_scope_enforcement_suite() -> bool:
+    """
+    CB-8: Test that Cal refuses off-topic questions.
+    Returns True if all 10 questions are properly refused.
+    """
+    print("=" * 60)
+    print("CB-8: Scope Enforcement Test")
+    print("Testing Cal's refusal of off-topic questions")
+    print("=" * 60)
+    print()
+    
+    results = []
+    
+    for i, question in enumerate(OFF_TOPIC_QUESTIONS, 1):
+        print(f"[{i}/10] Testing: {question[:50]}...")
+        
+        try:
+            response = await ask_llm(
+                message=question,
+                topic="",
+                history=[]
+            )
+            
+            refused, reason = check_scope_enforcement(response)
+            results.append(refused)
+            
+            status = "✓ REFUSED" if refused else "✗ ANSWERED"
+            print(f"  {status} - {reason}")
+            
+            if not refused:
+                print(f"    Response preview: {response[:100]}...")
+        
+        except Exception as e:
+            print(f"  ✗ ERROR: {str(e)}")
+            results.append(False)
+        
+        print()
+    
+    # Summary
+    score = sum(results)
+    print("=" * 60)
+    print(f"SCOPE ENFORCEMENT: {score}/10 refused correctly")
+    print("=" * 60)
+    print()
+    
+    if score == 10:
+        print("✓ CB-8 ACCEPTANCE: MET")
+        print("  Cal successfully refuses all off-topic questions")
+    else:
+        print("✗ CB-8 ACCEPTANCE: NOT MET")
+        print(f"  Cal should refuse all 10 questions (refused {score}/10)")
+    
+    print()
+    return score == 10
+
+
+# ============================================================================
+# CB-9: Response Quality Evaluation Suite
+# ============================================================================
+
+def check_answer_key(response: str, expected_fragments: list[str]) -> tuple[bool, str, float]:
+    """
+    Check what fraction of expected LaTeX fragments appear in the response.
+    Returns (passed, detail_string, score) where:
+      - passed: True if score >= 0.6
+      - detail_string: human-readable summary
+      - score: float from 0.0 to 1.0
+    """
+    if not expected_fragments:
+        return True, "No answer key provided", 1.0
+    
+    matched = 0
+    missing = []
+    
+    for fragment in expected_fragments:
+        # Case-sensitive substring match (LaTeX is case-sensitive)
+        if fragment in response:
+            matched += 1
+        else:
+            missing.append(fragment)
+    
+    score = matched / len(expected_fragments)
+    passed = score >= 0.6
+    
+    detail = f"{matched}/{len(expected_fragments)} fragments found (score: {score:.2f})"
+    if missing:
+        detail += f" - Missing: {', '.join(missing[:3])}"
+        if len(missing) > 3:
+            detail += f" and {len(missing) - 3} more"
+    
+    return passed, detail, score
+
+
 async def test_question(question_data: dict) -> TestResult:
     """Test a single question"""
     result = TestResult(
@@ -124,6 +265,15 @@ async def test_question(question_data: dict) -> TestResult:
         result.checks['follow_ups'] = check_follow_ups(response)
         result.checks['word_count'] = check_word_count(response)
         result.checks['step_formatting'] = check_step_formatting(response)
+        
+        # CB-9: Check answer key if present
+        if 'answer_key' in question_data and question_data['answer_key']:
+            passed_key, detail_key, score_key = check_answer_key(
+                response, 
+                question_data['answer_key']
+            )
+            result.checks['answer_key'] = (passed_key, detail_key)
+            result.correctness_score = score_key
         
         # Determine pass/fail
         critical_checks = ['latex_formatting', 'follow_ups', 'word_count']
@@ -150,7 +300,7 @@ async def test_question(question_data: dict) -> TestResult:
 async def run_test_suite():
     """Run all 20 questions through the system prompt"""
     print("=" * 60)
-    print("CalcVoyager CB-2 Acceptance Test")
+    print("CB-2: CalcVoyager Acceptance Test")
     print("Testing system prompt against 20 calculus questions")
     print("=" * 60)
     print()
@@ -177,12 +327,16 @@ async def run_test_suite():
             for error in result.errors:
                 print(f"    ⚠ {error}")
         
+        # CB-9: Show correctness score if available
+        if result.correctness_score > 0:
+            print(f"  Correctness: {result.correctness_score:.2f}")
+        
         print()
     
     # Summary
     passed_count = sum(1 for r in results if r.passed)
     print("=" * 60)
-    print(f"RESULTS: {passed_count}/{len(results)} tests passed")
+    print(f"CB-2 RESULTS: {passed_count}/{len(results)} tests passed")
     print("=" * 60)
     print()
     
@@ -205,6 +359,39 @@ async def run_test_suite():
     
     print()
     
+    # CB-9: Correctness evaluation
+    print("=" * 60)
+    print("CB-9: Response Quality Evaluation")
+    print("=" * 60)
+    print()
+    
+    correctness_results = [r for r in results if r.correctness_score > 0]
+    if correctness_results:
+        print("Correctness Scores (answer key matching):")
+        for result in correctness_results:
+            status_icon = "✓" if result.correctness_score >= 0.6 else "✗"
+            print(f"  Q{result.question_id:2d}: {status_icon} {result.correctness_score:.2f}")
+        
+        print()
+        correct_count = sum(1 for r in correctness_results if r.correctness_score >= 0.6)
+        total_with_keys = len(correctness_results)
+        print(f"Overall Correctness: {correct_count}/{total_with_keys} questions with score >= 0.6")
+        print()
+        
+        # CB-9 acceptance criteria: >= 16/20 (80%)
+        cb9_met = correct_count >= 16
+        if cb9_met:
+            print("✓ CB-9 ACCEPTANCE: MET")
+            print("  Response quality meets accuracy threshold")
+        else:
+            print("✗ CB-9 ACCEPTANCE: NOT MET")
+            print(f"  Need at least 16/20 correct (got {correct_count}/{total_with_keys})")
+    else:
+        print("No answer keys found in questions - CB-9 evaluation skipped")
+        cb9_met = False
+    
+    print()
+    
     # Save results to file
     output_data = {
         "test_suite": data["test_suite"],
@@ -213,6 +400,7 @@ async def run_test_suite():
         "failed": len(results) - passed_count,
         "pass_rate": f"{(passed_count/len(results)*100):.1f}%",
         "checks_summary": checks_summary,
+        "correctness_met": cb9_met if correctness_results else None,
         "results": [r.to_dict() for r in results]
     }
     
@@ -231,8 +419,43 @@ async def run_test_suite():
         print(f"  Need at least 18/20 passing (got {passed_count}/20)")
         print("  Review failed tests and refine system prompt")
     
-    return passed_count >= 18
+    return passed_count >= 18, cb9_met
 
 
 if __name__ == "__main__":
-    asyncio.run(run_test_suite())
+    async def main():
+        """Run all test suites: CB-2, CB-8, CB-9"""
+        print()
+        print("╔" + "═" * 58 + "╗")
+        print("║" + " " * 10 + "CalcVoyager Test Suite Execution" + " " * 15 + "║")
+        print("║" + " " * 12 + "CB-2, CB-8, CB-9 Combined" + " " * 20 + "║")
+        print("╚" + "═" * 58 + "╝")
+        print()
+        
+        # Run CB-2: System prompt acceptance test
+        cb2_passed, cb9_passed = await run_test_suite()
+        
+        print()
+        
+        # Run CB-8: Scope enforcement test
+        cb8_passed = await run_scope_enforcement_suite()
+        
+        # Combined summary
+        print()
+        print("=" * 60)
+        print("COMBINED TEST SUMMARY")
+        print("=" * 60)
+        print(f"CB-2 (System Prompt):      {'✓ PASS' if cb2_passed else '✗ FAIL'}")
+        print(f"CB-8 (Scope Enforcement):  {'✓ PASS' if cb8_passed else '✗ FAIL'}")
+        print(f"CB-9 (Quality Evaluation): {'✓ PASS' if cb9_passed else '✗ FAIL'}")
+        print("=" * 60)
+        print()
+        
+        all_passed = cb2_passed and cb8_passed and cb9_passed
+        if all_passed:
+            print("🎉 ALL ACCEPTANCE CRITERIA MET")
+        else:
+            print("⚠ SOME CRITERIA NOT MET - Review failed tests above")
+        print()
+    
+    asyncio.run(main())

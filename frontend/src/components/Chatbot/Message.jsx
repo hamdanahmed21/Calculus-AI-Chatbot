@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import katex from "katex";
 import "katex/dist/katex.min.css";
 
+
 function parseLatex(text) {
   const segments = [];
   const regex = /(\$\$[\s\S]+?\$\$|\$[^$\n]+?\$)/g;
@@ -45,7 +46,13 @@ function KatexSpan({ latex, displayMode }) {
 }
 
 function BotMessageContent({ content }) {
-  const segments = parseLatex(content);
+  const cleanedContent = content.replace(
+  /\[STEP\s+\d+\s+of\s+\d+\]\s*/i,
+  ""
+  );
+
+  const segments = parseLatex(cleanedContent);
+  
   return (
     <div className="cb-msg-text">
       {segments.map((seg, i) => {
@@ -100,6 +107,16 @@ function Message({ message }) {
   const isUser = message.role === "user";
   const isError = message.role === "error";
   const isBot = !isUser && !isError;
+  const stepMatch =
+    message.content?.match(/\[STEP\s+(\d+)\s+of\s+(\d+)\]/i);
+
+  const currentStep = stepMatch
+    ? parseInt(stepMatch[1])
+    : null;
+
+  const totalSteps = stepMatch
+    ? parseInt(stepMatch[2])
+    : null;
 
   if (isError) {
     return (
@@ -130,8 +147,32 @@ function Message({ message }) {
               ))}
             </div>
           ) : (
-            <BotMessageContent content={message.content} />
-          )}
+            <>
+              {currentStep && totalSteps && (
+                <div className="cb-progress-container">
+                  <div className="cb-progress-label">
+                    Step {currentStep} of {totalSteps}
+                  </div>
+
+                  <div className="cb-progress-bar">
+                    <div
+                      className="cb-progress-fill"
+                      style={{
+                        width: `${(currentStep / totalSteps) * 100}%`
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+              <BotMessageContent content={message.content} />
+              {currentStep === totalSteps && (
+                <div className="cb-complete-badge">
+                  🏆 Problem solved!
+                </div>
+              )}
+
+            </>
+        )}
           {message.timestamp && (
             <span className="cb-msg-time">
               {new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
