@@ -3,9 +3,10 @@ import { useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { sendMessage, sendMessageStream, createChatSession, fetchChatHistory } from "../../services/chatApi";
 import { getContextString, getTopicContext, getPageUrl } from "../../utils/routeContext";
-import Message, { MessageFeedback } from "./Message";
+import Message, { MessageFeedback, renderLatexSegments } from "./Message";
 import SuggestedQuestions from "./SuggestedQuestions";
 import MathSymbolPicker from "./MathSymbolPicker";
+import { IconClose, IconHistory, IconSigma, IconPlus, IconSend } from "./Icons";
 
 const WELCOME_PROMPTS = [
   "How do I find ∂f/∂x?",
@@ -133,22 +134,49 @@ function ChatWindow({ onClose, onActivity }) {
     if (tab === "history") loadHistory();
   }, [tab, loadHistory]);
 
-  const insertSymbol = (symbolText) => {
+  // const insertSymbol = (symbolText) => {
+  //   const ta = textareaRef.current;
+  //   if (!ta) return;
+  //   const start = ta.selectionStart;
+  //   const end = ta.selectionEnd;
+  //   const before = input.slice(0, start);
+  //   const after = input.slice(end);
+  //   const newVal = before + symbolText + after;
+  //   setInput(newVal);
+  //   requestAnimationFrame(() => {
+  //     ta.focus();
+  //     const pos = start + symbolText.length;
+  //     ta.setSelectionRange(pos, pos);
+  //   });
+  // };
+  const insertSymbol = (symbolText, placeholder) => {
     const ta = textareaRef.current;
     if (!ta) return;
+    const wrapped = `$${symbolText}$`;
     const start = ta.selectionStart;
     const end = ta.selectionEnd;
     const before = input.slice(0, start);
     const after = input.slice(end);
-    const newVal = before + symbolText + after;
+    const newVal = before + wrapped + after;
     setInput(newVal);
+
     requestAnimationFrame(() => {
       ta.focus();
-      const pos = start + symbolText.length;
+      if (placeholder) {
+        // lastIndexOf handles cases like \vec{v} where the letter
+        // also appears in the command name itself ("vec")
+        const localIdx = symbolText.lastIndexOf(placeholder);
+        if (localIdx !== -1) {
+          const selStart = start + 1 + localIdx; // +1 for the leading "$"
+          const selEnd = selStart + placeholder.length;
+          ta.setSelectionRange(selStart, selEnd);
+          return;
+        }
+      }
+      const pos = start + wrapped.length;
       ta.setSelectionRange(pos, pos);
     });
   };
-
   const buildHistory = (msgs) =>
     msgs
       .slice(-20)
@@ -313,9 +341,10 @@ function ChatWindow({ onClose, onActivity }) {
               title="New Chat"
               aria-label="Start a new chat"
             >
-              + New Chat
+            <span className="cb-new-chat-icon" aria-hidden="true">+</span>
+            <span>New Chat</span>
           </button>
-          {/* <button type="button" className="cb-icon-btn cb-icon-btn--close" onClick={onClose} aria-label="Close chat">✕</button> */}
+          <button type="button" className="cb-icon-btn cb-icon-btn--close" onClick={onClose} aria-label="Close chat">✕</button>
         </div>
       </div>
 
@@ -393,8 +422,17 @@ function ChatWindow({ onClose, onActivity }) {
       )}
 
       {tab === "chat" && (
-        <div className="cb-input-area">
-          <div className="cb-input-row">
+          <div className="cb-input-area">
+            {input.trim() && (
+              <div className="cb-input-preview">
+                <span className="cb-input-preview-label">Preview</span>
+                <div className="cb-input-preview-content">
+                  {renderLatexSegments(input, "preview")}
+                </div>
+              </div>
+            )}
+            <div className="cb-input-row">
+              {/* ...unchanged... */}
             <button
               type="button"
               className={`cb-sym-toggle${showSymbols ? " active" : ""}`}

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import ChatWindow from "./ChatWindow";
+import { IconClose } from "./Icons";
 import "./Chatbot.css";
 
 function Chatbot() {
@@ -46,7 +47,9 @@ function Chatbot() {
           aria-expanded={isOpen}
           aria-haspopup="dialog"
         >
-          <span className="cb-bubble-icon" aria-hidden="true">{isOpen ? "✕" : "∂"}</span>
+          <span className="cb-bubble-icon" aria-hidden="true">{
+            isOpen ? <IconClose /> : <span className="cb-bubble-icon">∂</span>}
+          </span>
           {!isOpen && hasUnread && <span className="cb-bubble-badge" aria-label="New message" />}
           {!isOpen && <span className="cb-bubble-label">Ask tutor</span>}
         </button>

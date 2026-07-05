@@ -169,7 +169,7 @@ function Message({ message, showFeedback = true }) {
             <div className="cb-msg-text">
               {message.content.split("\n").map((line, i, arr) => (
                 <span key={i}>
-                  {line}
+                  {renderLatexSegments(line, `u-${i}`)}
                   {i < arr.length - 1 && <br />}
                 </span>
               ))}
@@ -218,5 +218,5 @@ function Message({ message, showFeedback = true }) {
   );
 }
 
-export { MessageFeedback };
+export { MessageFeedback, renderLatexSegments };
 export default Message;
