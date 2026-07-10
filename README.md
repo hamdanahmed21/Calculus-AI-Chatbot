@@ -1,58 +1,24 @@
-# CalcVoyager AI Chatbot
+## 📌 Summary
+This PR implements CB-16 (Symbolic Math Verification) and CB-17 (Practice Mode) for the Cal chatbot.
 
-An intelligent AI-powered calculus tutoring chatbot designed for the **CalcVoyager** learning platform. The chatbot provides step-by-step explanations, contextual learning assistance, mathematical notation rendering, conversation history, and topic-aware responses to help students master multivariable calculus concepts.
+## 🧠 CB-16: Symbolic Math Verifier
+- Added `/services/math_verifier.py` using **SymPy**.
+- Automatically extracts Cal's `\boxed{}` answer and compares it to SymPy's independent solution.
+- Logs `WRONG_ANSWER` warnings for incorrect answers.
+- Gracefully falls back to the old answer-key method for unparseable problems.
 
----
+## 🎓 CB-17: Practice Mode
+- Added `/chat/practice/generate` endpoint to create a problem + hidden solution using LLM (mock).
+- Added `/chat/practice/attempt` endpoint to verify student answers using CB-16 verifier.
+- Added CLI practice tool (`practice_cli.py`) for interactive testing.
+- Practice attempts tracked in database (`practice_attempts` table).
 
-## 🚀 Features
+## 📂 Files Changed
+- Added: `services/math_verifier.py`
+- Added: `routes/practice.py`
+- Added: `routes/chat.py` (hooked verifier)
+- Added: `models.py` (PracticeAttempt table)
+- Added: `practice_cli.py` (CLI testing)
 
-### 📚 Calculus Tutoring
-- Answers questions related to:
-  - Partial Derivatives
-  - Vector Calculus
-  - Limits & Continuity
-  - Gradients
-  - Lagrange Multipliers
-  - Multivariable Functions
-  - Other CalcVoyager topics
-
-### 📝 Step-by-Step Explanations
-- Guides students through solutions instead of only providing answers.
-- Encourages conceptual understanding and critical thinking.
-
-### 🧮 Mathematical Notation Rendering
-- Uses LaTeX for mathematical expressions.
-- Frontend renders equations using KaTeX.
-
-Example:
-
-```latex
-\nabla f = \left\langle \frac{\partial f}{\partial x}, \frac{\partial f}{\partial y} \right\rangle
-
-💬 Conversation Memory
-Maintains context across conversations.
-Stores the last 10 conversation turns for improved continuity.
-🎯 Topic-Aware Responses
-Automatically detects the page/topic the student is studying.
-Tailors explanations based on current learning context.
-🔄 Suggested Follow-Up Questions
-
-Examples:
-
-Can you show another example?
-Why does this step work?
-What's the difference between this and a regular derivative?
-👤 User Authentication Support
-Logged-in users get persistent chat history.
-Guest users can chat without account requirements.
-⚠ Error Handling
-Graceful handling of:
-API failures
-Slow responses
-Network issues
-Provides user-friendly fallback messages.
-Team Theta
-
-AI Chatbot Team for CalcVoyager
-
-Building an intelligent, educational, and student-focused calculus tutoring experience.
+## ✅ Closes
+Closes CB-16 and CB-17
