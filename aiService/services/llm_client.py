@@ -189,6 +189,49 @@ THINGS YOU MUST NEVER DO
 - Work backwards from a result — always derive forward
 - Write walls of text
 """
+
+# ─────────────────────────────────────────────────────────────
+# CB-18: Adaptive difficulty guidance, layered on top of the
+# base system prompt depending on the student's tracked history.
+# ─────────────────────────────────────────────────────────────
+DIFFICULTY_GUIDANCE = {
+    "beginner": (
+        "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "ADAPTIVE DIFFICULTY: BEGINNER\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "This student is early in this topic (based on their history here).\n"
+        "Favor the Socratic side of your teaching style, use smaller steps,\n"
+        "plainer language before formal notation, and simpler numbers in\n"
+        "examples. Check understanding often before moving on."
+    ),
+    "intermediate": (
+        "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "ADAPTIVE DIFFICULTY: INTERMEDIATE\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "This student has some footing in this topic. Use standard pacing —\n"
+        "the default balance of intuition, formal definition, and worked\n"
+        "example described in your response structure."
+    ),
+    "advanced": (
+        "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "ADAPTIVE DIFFICULTY: ADVANCED\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "This student has shown consistent mastery on this topic. You may\n"
+        "move faster, introduce more challenging variations or edge cases,\n"
+        "skip basic re-derivations they've already seen, and lean less on\n"
+        "the Socratic hand-holding — while still showing full work."
+    ),
+}
+
+
+def _build_system_content(topic: str, difficulty: str) -> str:
+    system_content = CAL_SYSTEM_PROMPT
+    if topic:
+        system_content += f"\n\n[PAGE CONTEXT: {topic}]"
+    system_content += DIFFICULTY_GUIDANCE.get(difficulty, DIFFICULTY_GUIDANCE["intermediate"])
+    return system_content
+
+
 # Create OpenAI client
 client = AsyncOpenAI(
     api_key=os.getenv("GROK_API_KEY"),
@@ -199,7 +242,8 @@ client = AsyncOpenAI(
 async def ask_mock(
     message: str,
     topic: str = "",
-    history: list = None
+    history: list = None,
+    difficulty: str = "intermediate"
 ):
     """
     Mock AI response for testing without OpenAI.
@@ -212,6 +256,7 @@ async def ask_mock(
 Mock AI Response
 
 Topic: {topic}
+Difficulty (CB-18): {difficulty}
 
 Question:
 {message}
@@ -227,7 +272,8 @@ OpenAI integration will be used when USE_MOCK=False.
 async def ask_openai(
     message: str,
     topic: str = "",
-    history: list = None
+    history: list = None,
+    difficulty: str = "intermediate"
 ):
     """
     Send request to OpenAI.
@@ -237,10 +283,8 @@ async def ask_openai(
         history = []
 
     messages = []
-     # ── System prompt — Cal's brain ─────────────────────────
-    system_content = CAL_SYSTEM_PROMPT
-    if topic:
-        system_content += f"\n\n[PAGE CONTEXT: {topic}]"
+    # ── System prompt — Cal's brain ─────────────────────────
+    system_content = _build_system_content(topic, difficulty)
     messages.append({
         "role": "system",
         "content": system_content
@@ -295,7 +339,8 @@ async def ask_openai(
 async def ask_mock_stream(
     message: str,
     topic: str = "",
-    history: list = None
+    history: list = None,
+    difficulty: str = "intermediate"
 ):
     """
     Streaming version of the mock response, for testing without
@@ -308,6 +353,7 @@ async def ask_mock_stream(
 
     full_text = (
         f"Mock streamed response. Topic: {topic or 'general'}. "
+        f"Difficulty (CB-18): {difficulty}. "
         f"You asked: {message}. "
         f"History length: {len(history)} messages. "
         f"This is a placeholder streamed response simulating real token output."
@@ -321,7 +367,8 @@ async def ask_mock_stream(
 async def ask_openai_stream(
     message: str,
     topic: str = "",
-    history: list = None
+    history: list = None,
+    difficulty: str = "intermediate"
 ):
     """
     Streaming version of ask_openai.
@@ -333,9 +380,7 @@ async def ask_openai_stream(
 
     messages = []
     # ── System prompt — Cal's brain ─────────────────────────
-    system_content = CAL_SYSTEM_PROMPT
-    if topic:
-        system_content += f"\n\n[PAGE CONTEXT: {topic}]"
+    system_content = _build_system_content(topic, difficulty)
     messages.append({
         "role": "system",
         "content": system_content
@@ -378,7 +423,8 @@ async def ask_openai_stream(
 async def ask_llm_stream(
     message: str,
     topic: str = "",
-    history: list = None
+    history: list = None,
+    difficulty: str = "intermediate"
 ):
     """
     Streaming counterpart to ask_llm.
@@ -386,17 +432,18 @@ async def ask_llm_stream(
     same pattern as the existing non-streaming ask_llm().
     """
     if USE_MOCK:
-        async for chunk in ask_mock_stream(message, topic, history):
+        async for chunk in ask_mock_stream(message, topic, history, difficulty):
             yield chunk
     else:
-        async for chunk in ask_openai_stream(message, topic, history):
+        async for chunk in ask_openai_stream(message, topic, history, difficulty):
             yield chunk
 
 
 async def ask_llm(
     message: str,
     topic: str = "",
-    history: list = None
+    history: list = None,
+    difficulty: str = "intermediate"
 ):
     """
     Main function used by chatbot.py.
@@ -408,11 +455,13 @@ async def ask_llm(
         return await ask_mock(
             message,
             topic,
-            history
+            history,
+            difficulty
         )
 
     return await ask_openai(
         message,
         topic,
-        history
+        history,
+        difficulty
     )
