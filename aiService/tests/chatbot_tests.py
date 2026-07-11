@@ -178,14 +178,14 @@ async def run_scope_enforcement_suite() -> bool:
             refused, reason = check_scope_enforcement(response)
             results.append(refused)
             
-            status = "✓ REFUSED" if refused else "✗ ANSWERED"
+            status = "REFUSED" if refused else "ANSWERED"
             print(f"  {status} - {reason}")
             
             if not refused:
                 print(f"    Response preview: {response[:100]}...")
         
         except Exception as e:
-            print(f"  ✗ ERROR: {str(e)}")
+            print(f"  ERROR: {str(e)}")
             results.append(False)
         
         print()
@@ -198,10 +198,10 @@ async def run_scope_enforcement_suite() -> bool:
     print()
     
     if score == 10:
-        print("✓ CB-8 ACCEPTANCE: MET")
+        print("PASS: CB-8 ACCEPTANCE MET")
         print("  Cal successfully refuses all off-topic questions")
     else:
-        print("✗ CB-8 ACCEPTANCE: NOT MET")
+        print("FAIL: CB-8 ACCEPTANCE NOT MET")
         print(f"  Cal should refuse all 10 questions (refused {score}/10)")
     
     print()
@@ -347,12 +347,12 @@ async def run_test_suite():
         result = await test_question(question_data)
         results.append(result)
         
-        status = "✓ PASS" if result.passed else "✗ FAIL"
+        status = "PASS" if result.passed else "FAIL"
         print(f"  {status} - {result.word_count} words")
         
         if not result.passed:
             for error in result.errors:
-                print(f"    ⚠ {error}")
+                print(f"    WARNING: {error}")
         
         # CB-9: Show correctness score if available
         if result.correctness_score is not None and result.correctness_score > 0:
@@ -396,7 +396,7 @@ async def run_test_suite():
     if correctness_results:
         print("Correctness Scores (answer key matching):")
         for result in correctness_results:
-            status_icon = "✓" if result.correctness_score >= 0.6 else "✗"
+            status_icon = "PASS" if result.correctness_score >= 0.6 else "FAIL"
             print(f"  Q{result.question_id:2d}: {status_icon} {result.correctness_score:.2f}")
         
         print()
@@ -408,10 +408,10 @@ async def run_test_suite():
         # CB-9 acceptance criteria: >= 16/20 (80%)
         cb9_met = correct_count >= 16
         if cb9_met:
-            print("✓ CB-9 ACCEPTANCE: MET")
+            print("PASS: CB-9 ACCEPTANCE MET")
             print("  Response quality meets accuracy threshold")
         else:
-            print("✗ CB-9 ACCEPTANCE: NOT MET")
+            print("FAIL: CB-9 ACCEPTANCE NOT MET")
             print(f"  Need at least 16/20 correct (got {correct_count}/{total_with_keys})")
     else:
         print("No answer keys found in questions - CB-9 evaluation skipped")
@@ -439,10 +439,10 @@ async def run_test_suite():
     
     # Acceptance criteria
     if passed_count >= 18:  # 90% pass rate
-        print("✓ CB-2 ACCEPTANCE CRITERIA MET")
+        print("PASS: CB-2 ACCEPTANCE CRITERIA MET")
         print("  System prompt performs well across all topic areas")
     else:
-        print("✗ CB-2 ACCEPTANCE CRITERIA NOT MET")
+        print("FAIL: CB-2 ACCEPTANCE CRITERIA NOT MET")
         print(f"  Need at least 18/20 passing (got {passed_count}/20)")
         print("  Review failed tests and refine system prompt")
     
@@ -453,10 +453,8 @@ if __name__ == "__main__":
     async def main():
         """Run all test suites: CB-2, CB-8, CB-9"""
         print()
-        print("╔" + "═" * 58 + "╗")
-        print("║" + " " * 10 + "CalcVoyager Test Suite Execution" + " " * 15 + "║")
-        print("║" + " " * 12 + "CB-2, CB-8, CB-9 Combined" + " " * 20 + "║")
-        print("╚" + "═" * 58 + "╝")
+        print("[CalcVoyager Test Suite Execution]")
+        print("CB-2, CB-8, CB-9 Combined")
         print()
         
         # Run CB-2: System prompt acceptance test
@@ -472,19 +470,19 @@ if __name__ == "__main__":
         print("=" * 60)
         print("COMBINED TEST SUMMARY")
         print("=" * 60)
-        print(f"CB-2 (System Prompt):      {'✓ PASS' if cb2_passed else '✗ FAIL'}")
-        print(f"CB-8 (Scope Enforcement):  {'✓ PASS' if cb8_passed else '✗ FAIL'}")
-        print(f"CB-9 (Quality Evaluation): {'✓ PASS' if cb9_passed else '✗ FAIL'}")
+        print(f"CB-2 (System Prompt):      {'PASS' if cb2_passed else 'FAIL'}")
+        print(f"CB-8 (Scope Enforcement):  {'PASS' if cb8_passed else 'FAIL'}")
+        print(f"CB-9 (Quality Evaluation): {'PASS' if cb9_passed else 'FAIL'}")
         print("=" * 60)
         print()
         
         all_passed = cb2_passed and cb8_passed and cb9_passed
         if all_passed:
-            print("🎉 ALL ACCEPTANCE CRITERIA MET")
+            print("ALL ACCEPTANCE CRITERIA MET")
             import sys
-            sys.exit(0 if asyncio.run(main()) else 1)
+            sys.exit(0)
         else:
-            print("⚠ SOME CRITERIA NOT MET - Review failed tests above")
+            print("SOME CRITERIA NOT MET - Review failed tests above")
         print()
     
     asyncio.run(main())
