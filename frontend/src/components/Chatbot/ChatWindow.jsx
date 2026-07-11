@@ -107,6 +107,14 @@ function ChatWindow({ onClose, onActivity }) {
   const bottomRef = useRef(null);
   const textareaRef = useRef(null);
   const symbolsRef = useRef(null);
+  const symToggleRef = useRef(null); // CB-21: refocus target when picker closes
+
+  // CB-21: move keyboard focus into the panel as soon as it opens, so a
+  // keyboard-only user isn't left with focus stranded on the (now hidden)
+  // trigger bubble.
+  useEffect(() => {
+    textareaRef.current?.focus();
+  }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -126,6 +134,23 @@ function ChatWindow({ onClose, onActivity }) {
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
+  }, [showSymbols]);
+
+  // CB-21: Escape should close the math symbol picker first, not the whole
+  // chat panel. Registered on the capture phase so it runs before
+  // Chatbot.jsx's document-level Escape handler (which closes the entire
+  // panel) ever sees the event — stopPropagation here prevents that.
+  useEffect(() => {
+    if (!showSymbols) return;
+    const handler = (e) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        setShowSymbols(false);
+        symToggleRef.current?.focus();
+      }
+    };
+    document.addEventListener("keydown", handler, true);
+    return () => document.removeEventListener("keydown", handler, true);
   }, [showSymbols]);
 
   const loadHistory = useCallback(async () => {
@@ -375,6 +400,7 @@ function ChatWindow({ onClose, onActivity }) {
               className={`cb-tab-btn${tab === "history" ? " cb-tab-btn--active" : ""}`}
               onClick={() => setTab(tab === "history" ? "chat" : "history")}
               aria-label="Chat history"
+              aria-pressed={tab === "history"}
               title="Past conversations"
             >
               ⧖
@@ -441,20 +467,32 @@ function ChatWindow({ onClose, onActivity }) {
             <p className="cb-history-empty">No past conversations yet.</p>
           ) : (
             <ul className="cb-history-list">
-              {history.map((session) => (
-                <li
-                  key={session.id}
-                  className="cb-history-item"
-                  onClick={() => {
-                    if (session.messages?.length) setMessages(session.messages);
-                    if (session.id) setSessionId(session.id);
-                    setTab("chat");
-                  }}
-                >
-                  <span className="cb-history-preview">{session.preview}</span>
-                  <span className="cb-history-time">{session.date}</span>
-                </li>
-              ))}
+              {history.map((session) => {
+                const selectSession = () => {
+                  if (session.messages?.length) setMessages(session.messages);
+                  if (session.id) setSessionId(session.id);
+                  setTab("chat");
+                };
+                return (
+                  <li
+                    key={session.id}
+                    className="cb-history-item"
+                    role="button"
+                    tabIndex={0}
+                    onClick={selectSession}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        selectSession();
+                      }
+                    }}
+                    aria-label={`Open conversation: ${session.preview}${session.date ? `, ${session.date}` : ""}`}
+                  >
+                    <span className="cb-history-preview">{session.preview}</span>
+                    <span className="cb-history-time">{session.date}</span>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
@@ -492,7 +530,7 @@ function ChatWindow({ onClose, onActivity }) {
       )}
 
       {showSymbols && tab === "chat" && (
-        <div ref={symbolsRef}>
+        <div ref={symbolsRef} id="cb-symbol-picker" role="region" aria-label="Math symbol picker">
           <MathSymbolPicker activeGroup={activeGroup} onGroupChange={setActiveGroup} onInsert={insertSymbol} />
         </div>
       )}
@@ -510,10 +548,13 @@ function ChatWindow({ onClose, onActivity }) {
             <div className="cb-input-row">
               {/* ...unchanged... */}
             <button
+              ref={symToggleRef}
               type="button"
               className={`cb-sym-toggle${showSymbols ? " active" : ""}`}
               onClick={() => setShowSymbols((v) => !v)}
               aria-label="Math symbols"
+              aria-expanded={showSymbols}
+              aria-controls="cb-symbol-picker"
               title="Calculus symbols"
             >
               ∑
