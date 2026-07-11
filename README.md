@@ -429,7 +429,6 @@ Proprietary — Quantum Logics
 
 ## 👥 Authors
 
-- **Hamza Ali** — Math verification (CB-16)
 - **Team Theta** — System prompt design (Cal personality)
 - **CalcVoyager Team** — Full stack development
 
