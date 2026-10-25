@@ -15,11 +15,15 @@ COMMON_SYMBOLS = {'x': x, 'y': y, 'z': z, 't': t, 'u': u, 'v': v}
 def preprocess_math_expr(expr: str) -> str:
     """
     Normalize common human/LLM math notation into SymPy-parseable syntax:
-    - '^' -> '**'
+    - '\\cdot'  -> '*'
+    - '^'      -> '**'
     - implicit multiplication: '2x' -> '2*x', 'x2' -> 'x*2', ')(' -> ')*('
     """
     if not expr:
         return expr
+    # Convert LaTeX multiplication dot to Python *, e.g. 2\cdot x -> 2*x.
+    # Absorb any surrounding whitespace so '2 \cdot x' and '2\cdot x' both yield '2*x'.
+    expr = re.sub(r'\s*\\cdot\s*', '*', expr)
     # Standard LaTeX function names denote the same functions as SymPy syntax.
     # Keep this allowlist narrow; unsupported LaTeX remains unverifiable.
     expr = re.sub(r'\\(sin|cos|tan|exp|log|ln)\b',
